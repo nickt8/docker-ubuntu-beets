@@ -1,0 +1,183 @@
+name: Docker Publish
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    tags:
+      - "*"
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      beets_version:
+        description: "Specific beets version to build. Leave empty for latest."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      beets_version: ${{ steps.version.outputs.beets_version }}
+      release_tag: ${{ steps.version.outputs.release_tag }}
+      sha_tag: ${{ steps.version.outputs.sha_tag }}
+      publish_latest: ${{ steps.version.outputs.publish_latest }}
+      version_source: ${{ steps.version.outputs.version_source }}
+      build_date: ${{ steps.version.outputs.build_date }}
+    steps:
+      - name: Resolve beets version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          requested_version="${{ github.event.inputs.beets_version || '' }}"
+
+          if [ -n "${requested_version}" ]; then
+            beets_version="${requested_version}"
+            publish_latest="false"
+            version_source="manual-input"
+          else
+            beets_version=$(curl -fsSL https://pypi.org/pypi/beets/json | jq -r '.info.version')
+            publish_latest="true"
+            version_source="pypi-latest"
+          fi
+
+          # Validate the selected version exists on PyPI.
+          curl -fsSL "https://pypi.org/pypi/beets/${beets_version}/json" >/dev/null
+
+          if [ "${GITHUB_REF_NAME}" = "develop" ]; then
+            release_tag="dev-${beets_version}"
+            sha_tag="dev-sha-${GITHUB_SHA}"
+          else
+            release_tag="${beets_version}"
+            sha_tag="sha-${GITHUB_SHA}"
+          fi
+
+          echo "beets_version=${beets_version}" >> "$GITHUB_OUTPUT"
+          echo "release_tag=${release_tag}" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=${sha_tag}" >> "$GITHUB_OUTPUT"
+          echo "publish_latest=${publish_latest}" >> "$GITHUB_OUTPUT"
+          echo "version_source=${version_source}" >> "$GITHUB_OUTPUT"
+          echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            base_tag: noble
+            arch_tag: amd64
+          - platform: linux/arm64
+            base_tag: arm64v8-noble
+            arch_tag: arm64v8
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push arch image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.arch_tag }}-${{ needs.prepare.outputs.release_tag }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.arch_tag }}-${{ needs.prepare.outputs.sha_tag }}
+          build-args: |
+            BASE_TAG=${{ matrix.base_tag }}
+            BEETS_VERSION=${{ needs.prepare.outputs.beets_version }}
+            VERSION=${{ needs.prepare.outputs.beets_version }}
+            BUILD_DATE=${{ needs.prepare.outputs.build_date }}
+
+      - name: Build summary
+        shell: bash
+        run: |
+          {
+            echo "## Docker Publish (${{ matrix.arch_tag }})"
+            echo
+            echo "- Beets version: ${{ needs.prepare.outputs.beets_version }}"
+            echo "- Version source: ${{ needs.prepare.outputs.version_source }}"
+            echo "- Platform: ${{ matrix.platform }}"
+            echo "- Push enabled: ${{ github.event_name != 'pull_request' }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  merge-manifest:
+    needs:
+      - prepare
+      - build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create multi-arch manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          release_tag="${{ needs.prepare.outputs.release_tag }}"
+          sha_tag="${{ needs.prepare.outputs.sha_tag }}"
+          version="${{ needs.prepare.outputs.beets_version }}"
+
+          docker buildx imagetools create \
+            -t "${image}:${release_tag}" \
+            "${image}:amd64-${release_tag}" \
+            "${image}:arm64v8-${release_tag}"
+
+          docker buildx imagetools create \
+            -t "${image}:${sha_tag}" \
+            "${image}:amd64-${sha_tag}" \
+            "${image}:arm64v8-${sha_tag}"
+
+          if [ "${{ needs.prepare.outputs.publish_latest }}" = "true" ] && \
+             [ "${GITHUB_REF}" = "refs/heads/${{ github.event.repository.default_branch }}" ]; then
+            docker buildx imagetools create \
+              -t "${image}:latest" \
+              "${image}:amd64-${version}" \
+              "${image}:arm64v8-${version}"
+          fi
+
+      - name: Manifest summary
+        shell: bash
+        run: |
+          {
+            echo "## Multi-arch Manifest"
+            echo
+            echo "- Published tags: ${{ needs.prepare.outputs.release_tag }}, ${{ needs.prepare.outputs.sha_tag }}"
+            echo "- Published latest: ${{ needs.prepare.outputs.publish_latest }}"
+          } >> "$GITHUB_STEP_SUMMARY"
