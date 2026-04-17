@@ -1,0 +1,115 @@
+name: Docker Publish
+
+on:
+  push:
+    branches:
+      - develop
+    tags:
+      - "*"
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      beets_version:
+        description: "Specific beets version to build. Leave empty for latest."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            base_tag: noble
+          - platform: linux/arm64
+            base_tag: arm64v8-noble
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Resolve beets version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          requested_version="${{ github.event.inputs.beets_version || '' }}"
+
+          if [ -n "${requested_version}" ]; then
+            beets_version="${requested_version}"
+            publish_latest="false"
+            version_source="manual-input"
+          else
+            beets_version=$(curl -fsSL https://pypi.org/pypi/beets/json | jq -r '.info.version')
+            publish_latest="true"
+            version_source="pypi-latest"
+          fi
+
+          # Validate the selected version exists on PyPI.
+          curl -fsSL "https://pypi.org/pypi/beets/${beets_version}/json" >/dev/null
+
+          echo "beets_version=${beets_version}" >> "$GITHUB_OUTPUT"
+          echo "publish_latest=${publish_latest}" >> "$GITHUB_OUTPUT"
+          echo "version_source=${version_source}" >> "$GITHUB_OUTPUT"
+          echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.version.outputs.publish_latest == 'true' }}
+            type=raw,value=${{ steps.version.outputs.beets_version }}
+            type=ref,event=pr
+            type=sha
+
+      - name: Login to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: ${{ github.event_name != 'pull_request' }}
+          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            BASE_TAG=${{ matrix.base_tag }}
+            BEETS_VERSION=${{ steps.version.outputs.beets_version }}
+            VERSION=${{ steps.version.outputs.beets_version }}
+            BUILD_DATE=${{ steps.version.outputs.build_date }}
+
+      - name: Build summary
+        shell: bash
+        run: |
+          {
+            echo "## Docker Publish"
+            echo
+            echo "- Beets version: ${{ steps.version.outputs.beets_version }}"
+            echo "- Version source: ${{ steps.version.outputs.version_source }}"
+            echo "- Platforms: linux/amd64, linux/arm64"
+            echo "- Push enabled: ${{ github.event_name != 'pull_request' }}"
+          } >> "$GITHUB_STEP_SUMMARY"
