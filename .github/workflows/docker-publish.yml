@@ -3,6 +3,7 @@ name: Docker Publish
 on:
   push:
     branches:
+      - main
       - develop
     tags:
       - "*"
@@ -27,6 +28,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       beets_version: ${{ steps.version.outputs.beets_version }}
+      release_tag: ${{ steps.version.outputs.release_tag }}
+      sha_tag: ${{ steps.version.outputs.sha_tag }}
       publish_latest: ${{ steps.version.outputs.publish_latest }}
       version_source: ${{ steps.version.outputs.version_source }}
       build_date: ${{ steps.version.outputs.build_date }}
@@ -52,7 +55,17 @@ jobs:
           # Validate the selected version exists on PyPI.
           curl -fsSL "https://pypi.org/pypi/beets/${beets_version}/json" >/dev/null
 
+          if [ "${GITHUB_REF_NAME}" = "develop" ]; then
+            release_tag="dev-${beets_version}"
+            sha_tag="dev-sha-${GITHUB_SHA}"
+          else
+            release_tag="${beets_version}"
+            sha_tag="sha-${GITHUB_SHA}"
+          fi
+
           echo "beets_version=${beets_version}" >> "$GITHUB_OUTPUT"
+          echo "release_tag=${release_tag}" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=${sha_tag}" >> "$GITHUB_OUTPUT"
           echo "publish_latest=${publish_latest}" >> "$GITHUB_OUTPUT"
           echo "version_source=${version_source}" >> "$GITHUB_OUTPUT"
           echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
@@ -94,8 +107,8 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.arch_tag }}-${{ needs.prepare.outputs.beets_version }}
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.arch_tag }}-sha-${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.arch_tag }}-${{ needs.prepare.outputs.release_tag }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ matrix.arch_tag }}-${{ needs.prepare.outputs.sha_tag }}
           build-args: |
             BASE_TAG=${{ matrix.base_tag }}
             BEETS_VERSION=${{ needs.prepare.outputs.beets_version }}
@@ -137,17 +150,19 @@ jobs:
           set -euo pipefail
 
           image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          release_tag="${{ needs.prepare.outputs.release_tag }}"
+          sha_tag="${{ needs.prepare.outputs.sha_tag }}"
           version="${{ needs.prepare.outputs.beets_version }}"
 
           docker buildx imagetools create \
-            -t "${image}:${version}" \
-            "${image}:amd64-${version}" \
-            "${image}:arm64v8-${version}"
+            -t "${image}:${release_tag}" \
+            "${image}:amd64-${release_tag}" \
+            "${image}:arm64v8-${release_tag}"
 
           docker buildx imagetools create \
-            -t "${image}:sha-${{ github.sha }}" \
-            "${image}:amd64-sha-${{ github.sha }}" \
-            "${image}:arm64v8-sha-${{ github.sha }}"
+            -t "${image}:${sha_tag}" \
+            "${image}:amd64-${sha_tag}" \
+            "${image}:arm64v8-${sha_tag}"
 
           if [ "${{ needs.prepare.outputs.publish_latest }}" = "true" ] && \
              [ "${GITHUB_REF}" = "refs/heads/${{ github.event.repository.default_branch }}" ]; then
@@ -163,6 +178,6 @@ jobs:
           {
             echo "## Multi-arch Manifest"
             echo
-            echo "- Published tags: ${{ needs.prepare.outputs.beets_version }}, sha-${{ github.sha }}"
+            echo "- Published tags: ${{ needs.prepare.outputs.release_tag }}, ${{ needs.prepare.outputs.sha_tag }}"
             echo "- Published latest: ${{ needs.prepare.outputs.publish_latest }}"
           } >> "$GITHUB_STEP_SUMMARY"
