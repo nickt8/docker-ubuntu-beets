@@ -23,7 +23,7 @@ RUN \
     libcairo2-dev \
     libffi-dev \
     libfftw3-dev \
-    libgirepository1.0-dev \
+    libgirepository-2.0-dev \
     libglib2.0-dev \
     libjpeg-dev \
     libmpg123-dev \
@@ -33,7 +33,7 @@ RUN \
     python3-dev && \
   echo "**** install runtime packages ****" && \
   apt-get install -y --no-install-recommends \
-    chromaprint-tools \
+    libchromaprint1 \
     ffmpeg \
     flac \
     gobject-introspection \
@@ -85,7 +85,7 @@ RUN \
     libcairo2-dev \
     libffi-dev \
     libfftw3-dev \
-    libgirepository1.0-dev \
+    libgirepository-2.0-dev \
     libglib2.0-dev \
     libjpeg-dev \
     libmpg123-dev \
