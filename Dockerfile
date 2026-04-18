@@ -4,11 +4,7 @@ ARG BASE_TAG=noble
 FROM ghcr.io/linuxserver/baseimage-ubuntu:${BASE_TAG}
 
 # set version label
-ARG BUILD_DATE
-ARG VERSION
 ARG BEETS_VERSION
-LABEL build_version="Linuxserver.io version:- ${VERSION} Build-date:- ${BUILD_DATE}"
-LABEL maintainer="aptalca"
 
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -48,9 +44,8 @@ RUN \
   if [ -z ${BEETS_VERSION+x} ]; then \
     BEETS_VERSION=$(curl -sL https://pypi.org/pypi/beets/json | jq -r '.info.version'); \
   fi && \
-  git clone https://github.com/beetbox/beets.git /tmp/beets && \
+  git clone --depth 1 --branch "v${BEETS_VERSION}" https://github.com/beetbox/beets.git /tmp/beets && \
   cd /tmp/beets && \
-  git checkout -f "v${BEETS_VERSION}" && \
   echo "**** install pip packages ****" && \
   python3 -m venv /lsiopy && \
   pip install -U --no-cache-dir \
@@ -63,8 +58,6 @@ RUN \
   echo "**** install pip packages ****" && \
   pip install -U --no-cache-dir \
     beautifulsoup4 \
-    beets-extrafiles \
-    beetcamp \
     flask \
     flask-cors \
     PyGObject \
@@ -75,7 +68,6 @@ RUN \
     requests_oauthlib \
     typing-extensions \
     unidecode && \
-  printf "Linuxserver.io version: ${VERSION}\nBuild-date: ${BUILD_DATE}" > /build_version && \
   echo "**** cleanup ****" && \
   apt-get autoremove -y \
     build-essential \

@@ -1,0 +1,18 @@
+#!/usr/bin/with-contenv bash
+# shellcheck shell=bash
+
+# Example custom init script for user-managed Beets plugin installation.
+# Copy this file to your host, remove the .example suffix, then mount it to:
+# /custom-cont-init.d/50-install-beets-plugins
+
+set -euo pipefail
+
+echo "[custom-init] Installing Beets plugins"
+
+# Install plugins into the image virtual environment used by Beets.
+# Add or remove packages below based on your needs.
+/lsiopy/bin/pip install -U --no-cache-dir \
+    beets-extrafiles \
+    beetcamp
+
+echo "[custom-init] Plugin installation finished"
