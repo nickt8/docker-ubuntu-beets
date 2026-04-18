@@ -13,18 +13,9 @@ RUN \
   apt-get update && \
   apt-get install -y --no-install-recommends \
     build-essential \
-    cargo \
     cmake \
     git \
     libcairo2-dev \
-    libffi-dev \
-    libfftw3-dev \
-    libgirepository-2.0-dev \
-    libglib2.0-dev \
-    libjpeg-dev \
-    libmpg123-dev \
-    libopenjp2-7-dev \
-    libpng-dev \
     pkg-config \
     python3-dev && \
   echo "**** install runtime packages ****" && \
@@ -35,6 +26,7 @@ RUN \
     gobject-introspection \
     imagemagick \
     lame \
+    libgirepository-2.0-dev \
     mp3gain \
     mp3val \
     mpg123 \
@@ -71,18 +63,9 @@ RUN \
   echo "**** cleanup ****" && \
   apt-get autoremove -y \
     build-essential \
-    cargo \
     cmake \
     git \
     libcairo2-dev \
-    libffi-dev \
-    libfftw3-dev \
-    libgirepository-2.0-dev \
-    libglib2.0-dev \
-    libjpeg-dev \
-    libmpg123-dev \
-    libopenjp2-7-dev \
-    libpng-dev \
     pkg-config \
     python3-dev && \
   apt-get clean && \
