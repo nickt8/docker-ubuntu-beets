@@ -58,8 +58,6 @@ RUN \
   echo "**** install pip packages ****" && \
   pip install -U --no-cache-dir \
     beautifulsoup4 \
-    beets-extrafiles \
-    beetcamp \
     flask \
     flask-cors \
     PyGObject \

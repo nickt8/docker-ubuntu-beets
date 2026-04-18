@@ -43,7 +43,7 @@ For a command prompt as user abc `docker exec -it -u abc beets bash`
 
 See [Beets](http://beets.io/) for more info.
 
-Contains [beets-extrafiles](https://github.com/Holzhaus/beets-extrafiles) plugin, [configuration details](https://github.com/Holzhaus/beets-extrafiles#usage)
+Third-party Beets plugins are not auto-installed in this fork. See [Custom Plugin Installation](#custom-plugin-installation) after the basic usage examples.
 
 ## Read-Only Operation
 
@@ -96,6 +96,69 @@ docker run -d \
   --restart unless-stopped \
   ghcr.io/nickt8/docker-ubuntu-beets:latest
 ```
+
+## Custom Plugin Installation
+
+This image does not auto-install third-party Beets plugins. Plugin installation is user-managed via init scripts.
+
+In the original [linuxserver/docker-beets](https://github.com/linuxserver/docker-beets) repository, these plugins were installed in the Dockerfile. In this fork, if you want that same default plugin behavior, install them yourself using a `custom-cont-init.d` script.
+
+1. Copy the example installer from `templates/custom-cont-init.d/50-install-beets-plugins.example` to your host.
+2. Rename it to something like `50-install-beets-plugins`.
+3. Make it executable (`chmod +x`).
+4. Mount it into `/custom-cont-init.d/50-install-beets-plugins`.
+5. Restart the container.
+
+After installing plugins, update your Beets plugin list in `/config/config.yaml`.
+
+For more details on `custom-cont-init.d` scripts, see the [LinuxServer container customization docs](https://docs.linuxserver.io/general/container-customization/#custom-scripts).
+
+Example plugin docs:
+
+- [beets-extrafiles](https://github.com/Holzhaus/beets-extrafiles#usage)
+- [beetcamp](https://github.com/snejus/beetcamp)
+
+### Docker Compose Example
+
+```yaml
+---
+services:
+  beets:
+    image: ghcr.io/nickt8/docker-ubuntu-beets:latest
+    container_name: beets
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+    volumes:
+      - /path/to/beets/config:/config
+      - /path/to/music/library:/music
+      - /path/to/ingest:/downloads
+      - /path/to/custom-init/50-install-beets-plugins:/custom-cont-init.d/50-install-beets-plugins:ro
+    ports:
+      - 8337:8337
+    restart: unless-stopped
+```
+
+### Docker Run Example
+
+```bash
+docker run -d \
+  --name=beets \
+  -e PUID=1000 \
+  -e PGID=1000 \
+  -e TZ=Etc/UTC \
+  -p 8337:8337 \
+  -v /path/to/beets/config:/config \
+  -v /path/to/music/library:/music \
+  -v /path/to/ingest:/downloads \
+  -v /path/to/custom-init/50-install-beets-plugins:/custom-cont-init.d/50-install-beets-plugins:ro \
+  --restart unless-stopped \
+  ghcr.io/nickt8/docker-ubuntu-beets:latest
+```
+
+> [!NOTE]
+> Runtime plugin installation requires writable Python environment paths inside the container. Read-only container mode is not compatible with init-time `pip install` unless you provide a custom writable strategy.
 
 ## Parameters
 
@@ -268,5 +331,6 @@ docker build \
 Multi-arch builds are published automatically through the GitHub Actions workflow in this repository.
 
 ## Versions
+
 - **18.04.26:** - Publish images to GHCR with automatic `beets_version-rN` revision tags and OCI metadata labels.
 - **17.04.26:** - Fork from [linuxserver/docker-beets](https://github.com/linuxserver/docker-beets) and rebase the image onto Ubuntu Noble.
