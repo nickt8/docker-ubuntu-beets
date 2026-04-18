@@ -31,6 +31,7 @@ jobs:
       image_revision: ${{ steps.version.outputs.image_revision }}
       image_version: ${{ steps.version.outputs.image_version }}
       release_tag: ${{ steps.version.outputs.release_tag }}
+      beets_tag: ${{ steps.version.outputs.beets_tag }}
       sha_tag: ${{ steps.version.outputs.sha_tag }}
       publish_latest: ${{ steps.version.outputs.publish_latest }}
       version_source: ${{ steps.version.outputs.version_source }}
@@ -89,9 +90,11 @@ jobs:
 
           if [ "${GITHUB_REF_NAME}" = "develop" ]; then
             release_tag="dev-${image_version}"
+            beets_tag="dev-${beets_version}"
             sha_tag="dev-sha-${GITHUB_SHA}"
           else
             release_tag="${image_version}"
+            beets_tag="${beets_version}"
             sha_tag="sha-${GITHUB_SHA}"
           fi
 
@@ -99,6 +102,7 @@ jobs:
           echo "image_revision=${image_revision}" >> "$GITHUB_OUTPUT"
           echo "image_version=${image_version}" >> "$GITHUB_OUTPUT"
           echo "release_tag=${release_tag}" >> "$GITHUB_OUTPUT"
+          echo "beets_tag=${beets_tag}" >> "$GITHUB_OUTPUT"
           echo "sha_tag=${sha_tag}" >> "$GITHUB_OUTPUT"
           echo "publish_latest=${publish_latest}" >> "$GITHUB_OUTPUT"
           echo "version_source=${version_source}" >> "$GITHUB_OUTPUT"
@@ -198,11 +202,17 @@ jobs:
 
           image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
           release_tag="${{ needs.prepare.outputs.release_tag }}"
+          beets_tag="${{ needs.prepare.outputs.beets_tag }}"
           sha_tag="${{ needs.prepare.outputs.sha_tag }}"
           version="${{ needs.prepare.outputs.image_version }}"
 
           docker buildx imagetools create \
             -t "${image}:${release_tag}" \
+            "${image}:amd64-${release_tag}" \
+            "${image}:arm64v8-${release_tag}"
+
+          docker buildx imagetools create \
+            -t "${image}:${beets_tag}" \
             "${image}:amd64-${release_tag}" \
             "${image}:arm64v8-${release_tag}"
 
@@ -225,7 +235,7 @@ jobs:
           {
             echo "## Multi-arch Manifest"
             echo
-            echo "- Published tags: ${{ needs.prepare.outputs.release_tag }}, ${{ needs.prepare.outputs.sha_tag }}"
+            echo "- Published tags: ${{ needs.prepare.outputs.release_tag }}, ${{ needs.prepare.outputs.beets_tag }}, ${{ needs.prepare.outputs.sha_tag }}"
             echo "- Image version: ${{ needs.prepare.outputs.image_version }}"
             echo "- Published latest: ${{ needs.prepare.outputs.publish_latest }}"
           } >> "$GITHUB_STEP_SUMMARY"
