@@ -64,7 +64,6 @@ RUN \
   apt-get autoremove -y \
     build-essential \
     cmake \
-    git \
     libcairo2-dev \
     pkg-config \
     python3-dev && \
