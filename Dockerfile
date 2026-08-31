@@ -1,107 +1,84 @@
 # syntax=docker/dockerfile:1
 
-FROM ghcr.io/linuxserver/baseimage-alpine:3.23
+ARG BASE_TAG=noble
+FROM ghcr.io/linuxserver/baseimage-ubuntu:${BASE_TAG}
 
 # set version label
-ARG BUILD_DATE
-ARG VERSION
 ARG BEETS_VERSION
-LABEL build_version="Linuxserver.io version:- ${VERSION} Build-date:- ${BUILD_DATE}"
-LABEL maintainer="aptalca"
+
+ARG DEBIAN_FRONTEND=noninteractive
 
 RUN \
   echo "**** install build packages ****" && \
-  apk add --no-cache --virtual=build-dependencies \
-    build-base \
-    cairo-dev \
-    cargo \
+  apt-get update && \
+  apt-get install -y --no-install-recommends \
+    build-essential \
     cmake \
-    ffmpeg-dev \
-    fftw-dev \
     git \
-    gobject-introspection-dev \
-    jpeg-dev \
-    libedit-dev \
-    libpng-dev \
-    mpg123-dev \
-    openjpeg-dev \
+    libcairo2-dev \
+    pkg-config \
     python3-dev && \
   echo "**** install runtime packages ****" && \
-  apk add --no-cache \
-    chromaprint \
-    expat \
+  apt-get install -y --no-install-recommends \
+    libchromaprint1 \
     ffmpeg \
-    fftw \
     flac \
-    gdbm \
     gobject-introspection \
-    gst-plugins-good \
-    gstreamer \
     imagemagick \
-    jpeg \
     lame \
-    libffi \
-    libpng \
-    mpg123 \
+    libgirepository-2.0-dev \
     mp3gain \
+    mp3val \
+    mpg123 \
     nano \
-    openjpeg \
-    python3 \
-    sqlite-libs && \
+    python3-venv && \
   echo "**** install beets ****" && \
-  echo "**** install pip packages ****" && \
   if [ -z ${BEETS_VERSION+x} ]; then \
-    BEETS_VERSION=$(curl -sL  https://pypi.python.org/pypi/beets/json |jq -r '. | .info.version'); \
+    BEETS_VERSION=$(curl -sL https://pypi.org/pypi/beets/json | jq -r '.info.version'); \
   fi && \
-  git clone https://github.com/beetbox/beets.git /tmp/beets && \
+  git clone --depth 1 --branch "v${BEETS_VERSION}" https://github.com/beetbox/beets.git /tmp/beets && \
   cd /tmp/beets && \
-  git checkout -f "v${BEETS_VERSION}" && \
-  echo "**** compile mp3val ****" && \
-  mkdir -p \
-    /tmp/mp3val-src && \
-  curl -o \
-  /tmp/mp3val-src/mp3val.tar.gz -sL \
-    https://downloads.sourceforge.net/mp3val/mp3val-0.1.8-src.tar.gz && \
-  cd /tmp/mp3val-src && \
-  tar xzf /tmp/mp3val-src/mp3val.tar.gz --strip 1 && \
-  make -f Makefile.linux && \
-  cp -p mp3val /usr/bin && \
   echo "**** install pip packages ****" && \
   python3 -m venv /lsiopy && \
   pip install -U --no-cache-dir \
     pip \
-    setuptools && \
+    setuptools \
+    wheel && \
   echo "**** install beets ****" && \
   cd /tmp/beets && \
-  pip install -U --no-cache-dir --find-links https://wheel-index.linuxserver.io/alpine-3.23/ . && \
+  pip install -U --no-cache-dir . && \
   echo "**** install pip packages ****" && \
-  pip install -U --no-cache-dir --find-links https://wheel-index.linuxserver.io/alpine-3.23/ \
+  pip install -U --no-cache-dir \
     beautifulsoup4 \
-    beets-extrafiles \
-    beetcamp \
-    python3-discogs-client \
     flask \
     flask-cors \
     PyGObject \
     pyacoustid \
     pylast \
+    python3-discogs-client \
     requests \
     requests_oauthlib \
     typing-extensions \
     unidecode && \
-  printf "Linuxserver.io version: ${VERSION}\nBuild-date: ${BUILD_DATE}" > /build_version && \
   echo "**** cleanup ****" && \
-  apk del --purge \
-    build-dependencies && \
+  apt-get autoremove -y \
+    build-essential \
+    cmake \
+    libcairo2-dev \
+    pkg-config \
+    python3-dev && \
+  apt-get clean && \
   rm -rf \
     /tmp/* \
+    /var/lib/apt/lists/* \
+    /var/tmp/* \
     $HOME/.cache \
     $HOME/.cargo
 
 # environment settings
 ENV BEETSDIR="/config" \
-EDITOR="nano" \
-HOME="/config"
+  EDITOR="nano" \
+  HOME="/config"
 
 # copy local files
 COPY root/ /
